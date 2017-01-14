@@ -1,6 +1,5 @@
 import socket
 import select
-import queue
 
 HOST = '10.0.0.1'
 HOST_SERV1 = '192.168.0.101'
@@ -10,10 +9,9 @@ HOST_SERVERS = [HOST_SERV1, HOST_SERV2, HOST_SERV3]
 PORT_SERVERS = 80
 PORT_CLIENTS = 80
 
-NO_OF_CLIENTS = 100  # TODO: Change to ???
-
-REQUEST_SIZE = 4096  # TODO: Change to 9 chars
-RESPONSE_SIZE = 4096  # TODO: Change to ???
+NO_OF_CLIENTS = 100
+REQUEST_SIZE = 4096
+RESPONSE_SIZE = 4096
 
 
 class Server(object):
