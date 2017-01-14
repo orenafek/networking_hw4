@@ -13,7 +13,6 @@ PORT_CLIENTS = 80
 
 NO_OF_CLIENTS = 100  # TODO: Change to ???
 
-S1_INDEX = 0
 REQUEST_SIZE = 4096  # TODO: Change to 9 chars
 RESPONSE_SIZE = 4096  # TODO: Change to ???
 
@@ -26,13 +25,14 @@ class Server(object):
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._socket.connect((self.ip, self.port))
         # self._socket.setblocking(0)  # non blocking
-        self.clients = queue.Queue()
+        self.clients = []
 
     def close_socket(self):
         self._socket.close()
 
     def handle_client(self, client_socket):
-        self.clients.put_nowait(client_socket)
+        #self.clients.put_nowait(client_socket)
+        self.clients.append(client_socket)
         request = client_socket.recv(REQUEST_SIZE)
         if request:
             print('{0}: New Request Arrived: {1}'.format(self._name, request))
@@ -42,13 +42,17 @@ class Server(object):
             print('Request (s:{0},c:{1}) is empty :('.format(self._name, client_socket.getpeername()))
 
     def get_first_client(self):
-        return self.clients.get_nowait()
+        client = self.clients[0]
+        self.clients = self.clients[1:]
+        return client
+        #return self.clients.get_nowait()
 
     def socket(self):
         return self._socket
 
     def return_to_client(self):
-        client = self.clients.get_nowait()
+        #client = self.clients.get_nowait()
+        client = self.get_first_client()
         response = self._socket.recv(RESPONSE_SIZE)
         if not response:
             print('Response is empty :(')
