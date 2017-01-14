@@ -48,7 +48,6 @@ class Server(object):
         if not response:
             return
 
-        print('response from {0}: {1}'.format(self._name, str(response)))
         client.sendall(response)
         return client, response
 
@@ -102,7 +101,6 @@ def run_proxy(s1, s2, s3, client_socket):
                 request = s.recv(REQUEST_SIZE)
                 if request:
                     server = policy.next(request)
-                    print('Sending {0} from {1} to {2}'.format(request, s.getpeername()[0], server.name()))
                     server.handle_client(s, request)
 
     for server in servers:
@@ -116,7 +114,7 @@ class Policy(object):
         self._servers = [None, servers[0], servers[1], servers[2]]
         self._current_video_picture = 1
         self._work = [0, 0, 0, 0]
-        self._max_diff = 6
+        self._max_diff = 4
 
     def req_type(self, request):
         return chr(request[0])
@@ -126,14 +124,16 @@ class Policy(object):
 
     def next(self, request):
         if self.req_type(request) == 'M':
-            if self._work[3] > self._work[1] + self._work[2] + self._max_diff:
+            if self._work[3] > self._work[1] + self._work[2] + self._max_diff + \
+                    self.real_time(self._servers[1], request):
                 return self.next_video_picture(request)
 
             else:
                 return self.next_music(request)
 
         else:
-            if self._work[1] + self._work[2] > self._work[3] + self._max_diff:
+            if self._work[1] + self._work[2] > self._work[3] + self._max_diff + \
+                    self.real_time(self._servers[3], request):
                 return self.next_music(request)
 
             return self.next_video_picture(request)
