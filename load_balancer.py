@@ -1,6 +1,5 @@
 import socket
 import select
-import sys
 import queue
 
 HOST = '10.0.0.1'
@@ -20,45 +19,44 @@ RESPONSE_SIZE = 4096  # TODO: Change to ???
 class Server(object):
     def __init__(self, ip, port, name):
         self._name = name
+        self._id = int(name[1])
         self.ip = ip
         self.port = port
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._socket.connect((self.ip, self.port))
-        # self._socket.setblocking(0)  # non blocking
         self.clients = []
 
     def close_socket(self):
         self._socket.close()
 
-    def handle_client(self, client_socket):
-        #self.clients.put_nowait(client_socket)
+    def handle_client(self, client_socket, request):
         self.clients.append(client_socket)
-        request = client_socket.recv(REQUEST_SIZE)
-        if request:
-            print('{0}: New Request Arrived: {1}'.format(self._name, request))
-            self._socket.sendall(request)
-
-        else:
-            print('Request (s:{0},c:{1}) is empty :('.format(self._name, client_socket.getpeername()))
+        self._socket.sendall(request)
 
     def get_first_client(self):
         client = self.clients[0]
         self.clients = self.clients[1:]
         return client
-        #return self.clients.get_nowait()
+        # return self.clients.get_nowait()
 
     def socket(self):
         return self._socket
 
     def return_to_client(self):
-        #client = self.clients.get_nowait()
         client = self.get_first_client()
         response = self._socket.recv(RESPONSE_SIZE)
         if not response:
-            print('Response is empty :(')
             return
 
+        print('response from {0}: {1}'.format(self._name, str(response)))
         client.sendall(response)
+        return client, response
+
+    def id(self):
+        return self._id
+
+    def name(self):
+        return self._name
 
 
 def connect_to_servers():
@@ -77,31 +75,105 @@ def create_client_socket():
 def run_proxy(s1, s2, s3, client_socket):
     inputs = [client_socket, s1.socket(), s2.socket(), s3.socket()]
     servers = [s1, s2, s3]
+    policy = Policy(servers)
     while 1:
         readable, _, _ = select.select(inputs, [], [])
         for s in readable:
             if s is client_socket:  # new client
-                print('New Connection Arrived!')
                 connection, client_address = s.accept()
-                # connection.setblocking(0)
                 inputs.append(connection)  # return to select
 
-            elif s is s1.socket():
-                s1.return_to_client()
+            elif s == s1.socket():
+                client, response = s1.return_to_client()
+                inputs.remove(client)
+                policy.server_done(s1, response)
 
-            elif s is s2.socket():
-                s2.return_to_client()
+            elif s == s2.socket():
+                client, response = s2.return_to_client()
+                inputs.remove(client)
+                policy.server_done(s2, response)
 
-            elif s is s3.socket():
-                s3.return_to_client()
+            elif s == s3.socket():
+                client, response = s3.return_to_client()
+                inputs.remove(client)
+                policy.server_done(s3, response)
 
             else:  # from old client
-                s1.handle_client(s)
+                request = s.recv(REQUEST_SIZE)
+                if request:
+                    server = policy.next(request)
+                    print('Sending {0} from {1} to {2}'.format(request, s.getpeername()[0], server.name()))
+                    server.handle_client(s, request)
 
     for server in servers:
         server.close_socket()
 
     client_socket.close()
+
+
+class Policy(object):
+    def __init__(self, servers):
+        self._servers = [None, servers[0], servers[1], servers[2]]
+        self._current_video_picture = 1
+        self._work = [0, 0, 0, 0]
+        self._max_diff = 6
+
+    def req_type(self, request):
+        return chr(request[0])
+
+    def req_quantity(self, request):
+        return int(request[1])
+
+    def next(self, request):
+        if self.req_type(request) == 'M':
+            if self._work[3] > self._work[1] + self._work[2] + self._max_diff:
+                return self.next_video_picture(request)
+
+            else:
+                return self.next_music(request)
+
+        else:
+            if self._work[1] + self._work[2] > self._work[3] + self._max_diff:
+                return self.next_music(request)
+
+            return self.next_video_picture(request)
+
+    def server_done(self, server, response):
+        self._work[server.id()] -= self.real_time(server, response)
+
+    def next_video_picture(self, request):
+        server = self._servers[self._current_video_picture]
+        self._current_video_picture = 3 - self._current_video_picture
+        self._work[server.id()] += self.real_time(server, request)
+        return server
+
+    def next_music(self, request):
+        self._work[3] += self.real_time(self._servers[3], request)
+        return self._servers[3]
+
+    def real_time(self, server, message):
+        req_type = self.req_type(message)
+        req_quantity = self.req_quantity(message)
+        if req_type == 'M':
+            if server.id() == 1 or server.id() == 2:
+                return req_quantity * 2
+
+            else:
+                return req_quantity
+
+        if req_type == 'V':
+            if server.id() == 3:
+                return req_quantity * 3
+
+            else:
+                return req_quantity
+
+        if req_type == 'P':
+            if server.id() == 3:
+                return req_quantity * 2
+
+            else:
+                return req_quantity
 
 
 def main():
@@ -112,20 +184,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-def backup(s, message_queues, outputs, writable, next_msg):
-    data = s.recv(1024)  # TODO: maybe decrease size...
-    if data:
-        message_queues[S1_INDEX].put(data)
-        if s not in outputs:
-            outputs.append(s)
-
-    for s in writable:
-        try:
-            pass
-        except queue.Empty:
-            # No messages waiting so stop checking for writability.
-            outputs.remove(s)
-        else:
-            s.send(next_msg)
