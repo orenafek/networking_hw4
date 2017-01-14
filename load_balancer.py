@@ -49,7 +49,7 @@ class Server(object):
             print("Response is empty :(")
             return
 
-        client.sendall()
+        client.sendall(response)
 
 
 def connect_to_servers():
